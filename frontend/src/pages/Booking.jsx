@@ -6,7 +6,7 @@ import { bookingService } from '../services/bookingService';
 import { authService } from '../services/authService';
 import { 
   ArrowLeft, Car, Clock, ShieldCheck, MapPin, 
-  CheckCircle2, Plus, Zap, Bike, AlertCircle, Info
+  CheckCircle2, Plus, Zap, Bike, AlertCircle, Info, Timer
 } from 'lucide-react';
 
 export default function Booking() {
@@ -200,7 +200,9 @@ export default function Booking() {
           total_amount: res.total_amount,
           license_plate: plateToUse,
           hours: hours,
-          qr_code: res.qr_code
+          qr_code: res.qr_code,
+          arrival_deadline: res.arrival_deadline,
+          arrival_grace_minutes: res.arrival_grace_minutes || 15
         }
       });
     } catch (err) {
@@ -446,6 +448,17 @@ export default function Booking() {
         {/* 4. Booking Summary & Confirmation */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <h2 className="text-lg font-bold text-slate-900">Step 3: Reservation Summary & Duration</h2>
+
+          {/* 15-Minute Guaranteed Arrival Window Advisory */}
+          <div className="bg-amber-50/80 border border-amber-200 rounded-xl p-3.5 flex items-start gap-2.5 text-xs text-amber-900">
+            <Timer className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <strong className="font-bold text-amber-950 block">15-Minute Guaranteed Parking Window:</strong>
+              <p className="text-amber-800 leading-relaxed">
+                After payment confirmation, you have <strong>15 minutes</strong> to reach the lot and scan your QR pass at the barrier. If unparked within this window, the bay will automatically be released for other drivers.
+              </p>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Vehicle Chosen */}

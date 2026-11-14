@@ -9,6 +9,7 @@ from routes.parking import router as parking_router
 from routes.booking import router as booking_router
 from routes.payment import router as payment_router
 from routes.qr import router as qr_router
+from routes.operator import router as operator_router
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -37,6 +38,7 @@ app.include_router(parking_router, prefix="/api/lots", tags=["Parking Lots Alias
 app.include_router(booking_router)
 app.include_router(payment_router)
 app.include_router(qr_router)
+app.include_router(operator_router)
 
 @app.get("/")
 def home():
@@ -85,7 +87,11 @@ def seed_initial_data():
             )
             db.add(demo_op)
             db.commit()
+            db.refresh(demo_op)
 
+        # Backfill existing lots without operator_id
+        db.query(ParkingLot).filter(ParkingLot.operator_id.is_(None)).update({"operator_id": demo_op.user_id})
+        db.commit()
 
         # Check if parking lots already exist
         if not db.query(ParkingLot).first():
@@ -126,6 +132,7 @@ def seed_initial_data():
 
             for data in lots_data:
                 lot = ParkingLot(
+                    operator_id=demo_op.user_id,
                     name=data["name"],
                     address=data["address"],
                     latitude=data["latitude"],

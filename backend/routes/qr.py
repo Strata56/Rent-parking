@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -7,7 +7,10 @@ from typing import Optional
 from database import get_db
 from models.booking import Booking
 from models.parking_slot import ParkingSlot
+from models.parking_lot import ParkingLot
 from models.entry_exit_log import EntryExitLog
+from models.user import User
+from utils.auth import get_current_user
 from utils.qr_generator import generate_qr_base64
 
 router = APIRouter(prefix="/api/qr", tags=["QR Code & Barrier Terminal"])
@@ -18,11 +21,31 @@ class QRScanRequest(BaseModel):
     method: Optional[str] = "QR_CODE" # 'QR_CODE' or 'ANPR'
 
 @router.post("/scan")
-def scan_qr_barrier(data: QRScanRequest, db: Session = Depends(get_db)):
+def scan_qr_barrier(
+    data: QRScanRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.role != "operator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Operator access required"
+        )
+
     # Look up booking by QR token
     booking = db.query(Booking).filter(Booking.qr_code == data.qr_code.strip()).first()
     if not booking:
         raise HTTPException(status_code=404, detail="Invalid QR code. No corresponding booking found.")
+    
+    slot = db.query(ParkingSlot).filter(ParkingSlot.slot_id == booking.slot_id).first()
+    lot = db.query(ParkingLot).filter(ParkingLot.lot_id == slot.lot_id).first() if slot else None
+
+    # Verify that the slot belongs to this operator's facility
+    if lot and lot.operator_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: You do not manage the parking facility for this reservation"
+        )
     
     now = datetime.now(timezone.utc)
     slot = db.query(ParkingSlot).filter(ParkingSlot.slot_id == booking.slot_id).first()
@@ -30,7 +53,25 @@ def scan_qr_barrier(data: QRScanRequest, db: Session = Depends(get_db)):
     action_type = data.action.upper()
     if action_type == "ENTRY":
         if booking.status == "CANCELLED":
-            raise HTTPException(status_code=400, detail="Cannot enter: Booking was cancelled")
+            raise HTTPException(status_code=400, detail="Cannot enter: Reservation was cancelled")
+        if booking.status == "EXPIRED":
+            raise HTTPException(status_code=400, detail="Cannot enter: Arrival window expired. Slot was released for no-show.")
+        if booking.status == "COMPLETED":
+            raise HTTPException(status_code=400, detail="Cannot enter: This reservation pass has already been completed.")
+        
+        # Check if arrival window has elapsed
+        if booking.status == "CONFIRMED" and booking.arrival_deadline:
+            deadline = booking.arrival_deadline
+            curr_now = datetime.now(timezone.utc) if deadline.tzinfo is not None else datetime.utcnow()
+            if curr_now > deadline:
+                booking.status = "EXPIRED"
+                if slot and slot.status == "RESERVED":
+                    slot.status = "AVAILABLE"
+                db.commit()
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot enter: Arrival window expired. You were required to park within the allocated time. Slot has been released."
+                )
         
         booking.status = "ACTIVE"
         if slot:

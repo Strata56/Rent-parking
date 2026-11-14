@@ -7,7 +7,9 @@ load_dotenv()
 
 # Database connection URL - supports MySQL and SQLite
 # For MySQL in production / college demo: mysql+pymysql://root:password@localhost/smart_parking
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./smart_parking.db")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+default_db_path = os.path.join(BASE_DIR, "smart_parking.db")
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{default_db_path}")
 
 connect_args = {}
 if DATABASE_URL.startswith("sqlite"):

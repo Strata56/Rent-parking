@@ -6,18 +6,21 @@ import { Car, User, LogOut, LayoutDashboard, QrCode } from 'lucide-react';
 export default function Navbar() {
   const navigate = useNavigate();
   const user = authService.getCurrentUser();
+  const isOperator = user && user.role === 'operator';
 
   const handleLogout = () => {
     authService.logout();
     navigate('/');
   };
 
+  const homeLink = !user ? "/" : (isOperator ? "/operator/dashboard" : "/home");
+
   return (
     <nav className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-50 shadow-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           {/* Logo */}
-          <Link to={user ? "/home" : "/"} className="flex items-center space-x-3 group">
+          <Link to={homeLink} className="flex items-center space-x-3 group">
             <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white font-bold text-lg shadow-sm group-hover:bg-blue-500 transition">
               P
             </div>
@@ -32,34 +35,45 @@ export default function Navbar() {
           {/* Nav links */}
           {user ? (
             <div className="flex items-center space-x-6">
-              <Link to="/home" className="text-sm font-medium text-slate-300 hover:text-white transition">
-                Map & Lots
-              </Link>
-              <Link to="/search" className="text-sm font-medium text-slate-300 hover:text-white transition">
-                Search
-              </Link>
-              <Link to="/history" className="text-sm font-medium text-slate-300 hover:text-white transition">
-                My Bookings
-              </Link>
-              <Link to="/profile" className="text-sm font-medium text-slate-300 hover:text-white transition">
-                Vehicles
-              </Link>
-
-              {user.role === 'operator' && (
-                <Link
-                  to="/operator/dashboard"
-                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/30 border border-indigo-500/50 text-indigo-300 hover:bg-indigo-600/50 text-xs font-semibold uppercase tracking-wider transition"
-                >
-                  <LayoutDashboard className="w-3.5 h-3.5" />
-                  <span>Operator Console</span>
-                </Link>
+              {isOperator ? (
+                <>
+                  <Link to="/operator/dashboard" className="text-sm font-medium text-slate-300 hover:text-white transition">
+                    Dashboard
+                  </Link>
+                  <Link to="/operator/manage-lots" className="text-sm font-medium text-slate-300 hover:text-white transition">
+                    Lots
+                  </Link>
+                  <Link to="/operator/bookings" className="text-sm font-medium text-slate-300 hover:text-white transition">
+                    Bookings
+                  </Link>
+                  <Link to="/operator/scan" className="text-sm font-medium text-slate-300 hover:text-white transition">
+                    Scanner
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link to="/home" className="text-sm font-medium text-slate-300 hover:text-white transition">
+                    Map & Lots
+                  </Link>
+                  <Link to="/search" className="text-sm font-medium text-slate-300 hover:text-white transition">
+                    Search
+                  </Link>
+                  <Link to="/history" className="text-sm font-medium text-slate-300 hover:text-white transition">
+                    My Bookings
+                  </Link>
+                  <Link to="/profile" className="text-sm font-medium text-slate-300 hover:text-white transition">
+                    Vehicles
+                  </Link>
+                </>
               )}
 
               {/* User info & logout */}
               <div className="flex items-center space-x-3 pl-4 border-l border-slate-700">
                 <div className="text-right">
                   <span className="block text-sm font-semibold text-slate-200">{user.name}</span>
-                  <span className="block text-xs text-blue-400 capitalize">{user.role === 'commuter' ? 'Driver' : (user.role || 'Driver')}</span>
+                  <span className={`block text-xs font-semibold capitalize ${isOperator ? 'text-purple-400' : 'text-blue-400'}`}>
+                    {isOperator ? 'Operator' : 'Driver'}
+                  </span>
                 </div>
                 <button
                   onClick={handleLogout}

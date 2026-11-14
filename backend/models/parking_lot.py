@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Integer, Float
+from sqlalchemy import Column, String, Integer, Float, ForeignKey
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -10,7 +10,7 @@ class ParkingLot(Base):
     __tablename__ = "parking_lots"
 
     lot_id = Column(String(36), primary_key=True, default=generate_uuid)
-    operator_id = Column(String(36), nullable=True) # ID of the managing operator
+    operator_id = Column(String(36), ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False) # ID of managing operator
     name = Column(String(150), nullable=False)
     address = Column(String(255), nullable=False)
     latitude = Column(Float, nullable=False)

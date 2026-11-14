@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -7,7 +7,8 @@ from database import get_db
 from models.parking_lot import ParkingLot
 from models.parking_slot import ParkingSlot
 from models.user import User
-from utils.auth import get_current_user
+from utils.auth import get_current_user, get_optional_current_user
+from routes.booking import auto_expire_overdue_bookings
 
 router = APIRouter(prefix="/api/parking", tags=["Parking Lots & Slots"])
 
@@ -26,9 +27,19 @@ class UpdateSlotStatusRequest(BaseModel):
 def get_parking_lots(
     q: Optional[str] = None,
     slot_type: Optional[str] = None,
+    operator_id: Optional[str] = None,
+    current_user: Optional[User] = Depends(get_optional_current_user),
     db: Session = Depends(get_db)
 ):
+    auto_expire_overdue_bookings(db)
     query = db.query(ParkingLot)
+
+    # Filter by operator if specified or if requested by an authenticated operator
+    if operator_id:
+        query = query.filter(ParkingLot.operator_id == operator_id)
+    elif current_user and current_user.role == "operator":
+        query = query.filter(ParkingLot.operator_id == current_user.user_id)
+
     if q:
         search_filter = f"%{q}%"
         query = query.filter((ParkingLot.name.ilike(search_filter)) | (ParkingLot.address.ilike(search_filter)))
@@ -59,6 +70,7 @@ def get_parking_lots(
 
 @router.get("/lots/{lot_id}")
 def get_parking_lot_by_id(lot_id: str, db: Session = Depends(get_db)):
+    auto_expire_overdue_bookings(db)
     lot = db.query(ParkingLot).filter(ParkingLot.lot_id == lot_id).first()
     if not lot:
         raise HTTPException(status_code=404, detail="Parking lot not found")
@@ -94,6 +106,12 @@ def create_parking_lot(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    if current_user.role != "operator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Operator access required to create parking facilities"
+        )
+
     lot = ParkingLot(
         operator_id=current_user.user_id,
         name=data.name,
@@ -140,6 +158,7 @@ def create_parking_lot(
 
 @router.get("/slots/{lot_id}")
 def get_slots_by_lot(lot_id: str, db: Session = Depends(get_db)):
+    auto_expire_overdue_bookings(db)
     slots = db.query(ParkingSlot).filter(ParkingSlot.lot_id == lot_id).order_by(ParkingSlot.slot_number).all()
     return [
         {
@@ -159,10 +178,23 @@ def update_slot_status(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    if current_user.role != "operator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Operator access required"
+        )
+
     slot = db.query(ParkingSlot).filter(ParkingSlot.slot_id == slot_id).first()
     if not slot:
         raise HTTPException(status_code=404, detail="Slot not found")
-    
+
+    lot = db.query(ParkingLot).filter(ParkingLot.lot_id == slot.lot_id).first()
+    if not lot or lot.operator_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: You do not have permission to manage slots in this facility"
+        )
+
     slot.status = data.status.upper()
     db.commit()
     return {

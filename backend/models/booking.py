@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, ForeignKey
+from sqlalchemy import Column, String, DateTime, ForeignKey, Integer
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -19,9 +19,11 @@ class Booking(Base):
     vehicle_id = Column(String(36), ForeignKey("vehicles.vehicle_id"), nullable=False)
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime, nullable=False)
-    status = Column(String(30), default="CONFIRMED") # CONFIRMED, ACTIVE, COMPLETED, CANCELLED
+    status = Column(String(30), default="CONFIRMED") # CONFIRMED, ACTIVE, COMPLETED, CANCELLED, EXPIRED
     qr_code = Column(String(100), unique=True, index=True, nullable=False)
     created_at = Column(DateTime, default=get_utc_now)
+    arrival_deadline = Column(DateTime, nullable=True) # Time window within which vehicle must be parked/scanned
+    extended_count = Column(Integer, default=0) # Number of grace extensions granted (max 1)
 
     # Relationships
     user = relationship("User", back_populates="bookings")

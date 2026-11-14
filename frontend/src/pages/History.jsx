@@ -99,6 +99,7 @@ export default function History() {
         <QRDisplay
           booking={selectedPass}
           onClose={() => setSelectedPass(null)}
+          onBookingUpdated={loadBookings}
         />
       )}
     </div>

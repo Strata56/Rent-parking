@@ -10,7 +10,6 @@ export default function Register() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState('driver');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -24,13 +23,8 @@ export default function Register() {
     try {
       setLoading(true);
       setError('');
-      await authService.register(name.trim(), email.trim(), password, phone.trim(), role);
-      
-      if (role === 'operator') {
-        navigate('/operator/dashboard');
-      } else {
-        navigate('/home');
-      }
+      await authService.register(name.trim(), email.trim(), password, phone.trim());
+      navigate('/home');
     } catch (err) {
       setError(err.response?.data?.detail || err.message || 'Registration failed. Please try again.');
     } finally {
@@ -116,20 +110,6 @@ export default function Register() {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Account Type
-              </label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition"
-              >
-                <option value="driver">Driver</option>
-                <option value="operator">Parking Lot Operator</option>
-              </select>
             </div>
 
             <button

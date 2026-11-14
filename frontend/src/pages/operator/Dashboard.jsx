@@ -10,17 +10,22 @@ import {
 export default function Dashboard() {
   const [lots, setLots] = useState([]);
   const [allBookings, setAllBookings] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      const [lotsData, bookingsData] = await Promise.all([
+      const [lotsData, bookingsData, statsData] = await Promise.all([
         bookingService.getParkingLots(),
-        bookingService.getAllBookings().catch(() => [])
+        bookingService.getAllBookings().catch(() => []),
+        bookingService.getOperatorStats().catch(() => null)
       ]);
       setLots(lotsData || []);
       setAllBookings(bookingsData || []);
+      if (statsData) {
+        setStats(statsData);
+      }
     } catch (err) {
       console.error('Failed to load dashboard:', err);
     } finally {
@@ -32,12 +37,12 @@ export default function Dashboard() {
     loadData();
   }, []);
 
-  // Compute live metrics
-  const totalSlots = lots.reduce((acc, l) => acc + (l.total_slots || 0), 0);
-  const availableSlots = lots.reduce((acc, l) => acc + (l.available_slots || 0), 0);
-  const occupiedSlots = Math.max(0, totalSlots - availableSlots);
-  const occupancyPercent = totalSlots > 0 ? Math.round((occupiedSlots / totalSlots) * 100) : 0;
-  const estimatedRevenue = occupiedSlots * 60 * 3; // Estimated collection
+  // Compute live metrics (fallback to lots calculations if stats not yet loaded)
+  const totalSlots = stats?.total_slots ?? lots.reduce((acc, l) => acc + (l.total_slots || 0), 0);
+  const availableSlots = stats?.available_slots ?? lots.reduce((acc, l) => acc + (l.available_slots || 0), 0);
+  const occupiedSlots = stats?.occupied_slots ?? Math.max(0, totalSlots - availableSlots);
+  const occupancyPercent = stats?.occupancy_rate ?? (totalSlots > 0 ? Math.round((occupiedSlots / totalSlots) * 100) : 0);
+  const todayRevenue = stats?.today_revenue ?? 0;
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -100,9 +105,9 @@ export default function Dashboard() {
           </div>
 
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs space-y-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Est. Daily Revenue</span>
-            <div className="text-2xl sm:text-3xl font-black text-purple-600">₹{estimatedRevenue.toLocaleString()}</div>
-            <span className="text-xs text-slate-500 block">Digital & UPI receipts</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">Today's Revenue</span>
+            <div className="text-2xl sm:text-3xl font-black text-purple-600">₹{todayRevenue.toLocaleString()}</div>
+            <span className="text-xs text-slate-500 block">Verified SUCCESS receipts</span>
           </div>
         </div>
 
@@ -136,6 +141,9 @@ export default function Dashboard() {
               <h2 className="text-lg font-bold text-slate-900">Active & Recent Parkers</h2>
               <p className="text-xs text-slate-500">Live reservation logs with slot and vehicle validation</p>
             </div>
+            <Link to="/operator/bookings" className="text-xs font-semibold text-blue-600 hover:underline">
+              View All Bookings →
+            </Link>
           </div>
 
           <div className="overflow-x-auto">

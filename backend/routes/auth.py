@@ -50,13 +50,13 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
             detail="An account with this email already exists"
         )
     
-    assigned_role = data.role if data.role in ["driver", "commuter", "operator"] else "driver"
+    # Security requirement: Force role to "driver" - do not accept role from client at registration
     new_user = User(
         name=data.name,
         email=data.email.lower(),
         phone=data.phone,
         password_hash=hash_password(data.password),
-        role=assigned_role
+        role="driver"
     )
     db.add(new_user)
     db.commit()

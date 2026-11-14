@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -15,6 +15,44 @@ from utils.auth import get_current_user
 
 router = APIRouter(prefix="/api/booking", tags=["Bookings"])
 
+def to_utc_iso(dt: Optional[datetime]) -> Optional[str]:
+    """
+    Serializes a datetime object into standard ISO 8601 with explicit 'Z' UTC indicator
+    so frontend clients in any local timezone (e.g. IST +05:30) parse it accurately without skew.
+    """
+    if not dt:
+        return None
+    iso = dt.isoformat()
+    if not iso.endswith("Z") and "+" not in iso:
+        return f"{iso}Z"
+    return iso
+
+def auto_expire_overdue_bookings(db: Session):
+    """
+    Evaluates all CONFIRMED bookings. If the current time exceeds the
+    arrival_deadline, automatically transitions the booking to EXPIRED and
+    releases the reserved parking slot back to AVAILABLE for other commuters.
+    """
+    now_utc = datetime.utcnow()
+    candidates = db.query(Booking).filter(
+        Booking.status == "CONFIRMED",
+        Booking.arrival_deadline.isnot(None)
+    ).all()
+
+    overdue_count = 0
+    for b in candidates:
+        deadline = b.arrival_deadline
+        is_overdue = (datetime.now(timezone.utc) > deadline) if deadline.tzinfo else (now_utc > deadline)
+        if is_overdue:
+            b.status = "EXPIRED"
+            slot = db.query(ParkingSlot).filter(ParkingSlot.slot_id == b.slot_id).first()
+            if slot and slot.status == "RESERVED":
+                slot.status = "AVAILABLE"
+            overdue_count += 1
+
+    if overdue_count > 0:
+        db.commit()
+
 class CreateBookingRequest(BaseModel):
     slot_id: str
     vehicle_id: Optional[str] = None
@@ -23,6 +61,7 @@ class CreateBookingRequest(BaseModel):
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     duration_hours: Optional[int] = 2
+    arrival_grace_minutes: Optional[int] = 15
 
 def check_vehicle_slot_compatibility(vehicle_type: str, slot_type: str) -> bool:
     v = (vehicle_type or "Car").strip().upper()
@@ -42,6 +81,9 @@ def create_booking(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    # Auto-release any expired holds first so fresh inventory is accurate
+    auto_expire_overdue_bookings(db)
+
     # Verify slot availability
     slot = db.query(ParkingSlot).filter(ParkingSlot.slot_id == data.slot_id).first()
     if not slot:
@@ -85,8 +127,11 @@ def create_booking(
     # Compute start & end time
     now = datetime.now(timezone.utc)
     hours = data.duration_hours or 2
-    from datetime import timedelta
     end = now + timedelta(hours=hours)
+
+    # Establish arrival deadline (default: 15 minutes grace period)
+    grace_minutes = data.arrival_grace_minutes if data.arrival_grace_minutes and data.arrival_grace_minutes > 0 else 15
+    arrival_deadline = now + timedelta(minutes=grace_minutes)
 
     qr_token = f"SP-{uuid.uuid4().hex[:12].upper()}"
 
@@ -96,6 +141,8 @@ def create_booking(
         vehicle_id=vehicle_id,
         start_time=now,
         end_time=end,
+        arrival_deadline=arrival_deadline,
+        extended_count=0,
         status="CONFIRMED",
         qr_code=qr_token
     )
@@ -116,8 +163,11 @@ def create_booking(
         "booking_id": booking.booking_id,
         "slot_number": slot.slot_number,
         "lot_name": lot.name if lot else "Parking Lot",
-        "start_time": booking.start_time.isoformat(),
-        "end_time": booking.end_time.isoformat(),
+        "start_time": to_utc_iso(booking.start_time),
+        "end_time": to_utc_iso(booking.end_time),
+        "arrival_deadline": to_utc_iso(booking.arrival_deadline),
+        "arrival_grace_minutes": grace_minutes,
+        "extended_count": booking.extended_count,
         "qr_code": booking.qr_code,
         "status": booking.status,
         "total_amount": total_amount
@@ -128,6 +178,7 @@ def get_my_bookings(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    auto_expire_overdue_bookings(db)
     bookings = db.query(Booking).filter(Booking.user_id == current_user.user_id).order_by(Booking.created_at.desc()).all()
     results = []
     for b in bookings:
@@ -143,11 +194,13 @@ def get_my_bookings(
             "lot_name": lot.name if lot else "N/A",
             "lot_address": lot.address if lot else "N/A",
             "vehicle_plate": vehicle.license_plate if vehicle else "N/A",
-            "start_time": b.start_time.isoformat() if b.start_time else None,
-            "end_time": b.end_time.isoformat() if b.end_time else None,
+            "start_time": to_utc_iso(b.start_time),
+            "end_time": to_utc_iso(b.end_time),
+            "arrival_deadline": to_utc_iso(b.arrival_deadline),
+            "extended_count": b.extended_count or 0,
             "status": b.status,
             "qr_code": b.qr_code,
-            "created_at": b.created_at.isoformat() if b.created_at else None
+            "created_at": to_utc_iso(b.created_at)
         })
     return results
 
@@ -156,7 +209,22 @@ def get_all_bookings(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    bookings = db.query(Booking).order_by(Booking.created_at.desc()).limit(100).all()
+    if current_user.role != "operator":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Operator access required"
+        )
+
+    auto_expire_overdue_bookings(db)
+    bookings = (
+        db.query(Booking)
+        .join(ParkingSlot, Booking.slot_id == ParkingSlot.slot_id)
+        .join(ParkingLot, ParkingSlot.lot_id == ParkingLot.lot_id)
+        .filter(ParkingLot.operator_id == current_user.user_id)
+        .order_by(Booking.created_at.desc())
+        .limit(100)
+        .all()
+    )
     results = []
     for b in bookings:
         slot = db.query(ParkingSlot).filter(ParkingSlot.slot_id == b.slot_id).first()
@@ -170,12 +238,50 @@ def get_all_bookings(
             "slot_number": slot.slot_number if slot else "N/A",
             "lot_name": lot.name if lot else "N/A",
             "license_plate": vehicle.license_plate if vehicle else "N/A",
-            "start_time": b.start_time.isoformat() if b.start_time else None,
-            "end_time": b.end_time.isoformat() if b.end_time else None,
+            "start_time": to_utc_iso(b.start_time),
+            "end_time": to_utc_iso(b.end_time),
+            "arrival_deadline": to_utc_iso(b.arrival_deadline),
+            "extended_count": b.extended_count or 0,
             "status": b.status,
             "qr_code": b.qr_code
         })
     return results
+
+@router.post("/{booking_id}/extend-arrival")
+def extend_arrival_window(
+    booking_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    auto_expire_overdue_bookings(db)
+    booking = db.query(Booking).filter(Booking.booking_id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    
+    if booking.user_id != current_user.user_id and current_user.role != "operator":
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    if booking.status != "CONFIRMED":
+        raise HTTPException(status_code=400, detail=f"Cannot extend arrival window for a booking in '{booking.status}' status")
+    
+    if (booking.extended_count or 0) >= 1:
+        raise HTTPException(status_code=400, detail="Maximum 1 arrival window extension allowed per reservation")
+    
+    now_utc = datetime.utcnow()
+    deadline = booking.arrival_deadline
+    is_active = (datetime.now(timezone.utc) <= deadline) if (deadline and deadline.tzinfo) else (deadline and now_utc <= deadline)
+    base_time = deadline if is_active else now_utc
+    booking.arrival_deadline = base_time + timedelta(minutes=10)
+    booking.extended_count = (booking.extended_count or 0) + 1
+    db.commit()
+    db.refresh(booking)
+
+    return {
+        "message": "Arrival window successfully extended by 10 minutes",
+        "booking_id": booking.booking_id,
+        "arrival_deadline": to_utc_iso(booking.arrival_deadline),
+        "extended_count": booking.extended_count
+    }
 
 @router.post("/{booking_id}/cancel")
 def cancel_booking(

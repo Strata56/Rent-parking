@@ -34,9 +34,33 @@ export const bookingService = {
     return res.data;
   },
 
+  // Extend arrival window (running late feature: +10 mins grace period)
+  extendArrival: async (bookingId) => {
+    const res = await api.post(`/booking/${bookingId}/extend-arrival`);
+    return res.data;
+  },
+
   // Get all bookings (for operator dashboard)
   getAllBookings: async () => {
     const res = await api.get('/booking/all');
+    return res.data;
+  },
+
+  // Get operator facility stats & today's verified revenue
+  getOperatorStats: async () => {
+    const res = await api.get('/operator/stats');
+    return res.data;
+  },
+
+  // Get lots owned exclusively by this operator
+  getOperatorLots: async () => {
+    const res = await api.get('/operator/lots');
+    return res.data;
+  },
+
+  // Get bookings for facilities managed by this operator
+  getOperatorBookings: async () => {
+    const res = await api.get('/operator/bookings');
     return res.data;
   },
 

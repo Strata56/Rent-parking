@@ -1,6 +1,19 @@
+export const parseUtcDate = (dateVal) => {
+  if (!dateVal) return null;
+  if (dateVal instanceof Date) return dateVal;
+  let str = String(dateVal).trim();
+  if (!str) return null;
+  // If no timezone suffix (no Z, no +/-, no GMT), append 'Z' so browsers parse as UTC
+  if (!str.endsWith('Z') && !str.includes('+') && !str.includes('GMT')) {
+    str = str.replace(' ', 'T') + 'Z';
+  }
+  const parsed = new Date(str);
+  return isNaN(parsed.getTime()) ? new Date(dateVal) : parsed;
+};
+
 export const formatDate = (dateString) => {
   if (!dateString) return '-';
-  const d = new Date(dateString);
+  const d = parseUtcDate(dateString);
   return d.toLocaleString([], {
     month: 'short',
     day: 'numeric',
