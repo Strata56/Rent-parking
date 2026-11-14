@@ -1,97 +1,75 @@
-# Smart Parking & Vehicle Management System
+# SmartPark — Real-Time Parking & Reservation System
 
-> A Digital Platform for Real-Time Parking Discovery, Reservation & Cashless Payment  
-> **Author**: Sarthak Prabhakar Kambli (TYIT/438)
+A full-stack web application designed for smart parking discovery, bay reservation, cashless payment, QR-based barrier gate check-in, and facility operator management.
 
 ---
 
 ## 🌟 Key Features
 
-1. **Real-Time Bay Discovery & Interactive Map**:
-   - Leaflet / OpenStreetMap view showing parking lots across commercial, transit, and retail zones.
-   - Filter by slot type: Standard Car, EV Fast Charging, Two-Wheelers/Bikes, and Accessible bays.
-   - Dynamic 2D parking lot layout displaying real-time status: Available (Green), Occupied (Red), Reserved (Yellow), Maintenance (Gray).
+### For Drivers
+- **Real-Time Lot Discovery & Interactive Map**: Explore nearby parking facilities on an interactive Leaflet map. Filter bays by type (Standard Car, EV Charging, Two-Wheeler, Accessible).
+- **Advance Bay Reservation**: Select specific bays and vehicles with flexible booking durations.
+- **15-Minute Arrival Window**: Automated grace period with automatic slot release to prevent held inventory.
+- **Cashless Payments**: Server-calculated pricing (`hours × hourly_rate`) with idempotent payment verification.
+- **Digital QR Parking Pass**: Instant digital pass for barrier gate entry and exit validation.
 
-2. **Advance Slot Reservation**:
-   - Pick specific parking bays.
-   - Select registered vehicles or add on the fly.
-   - Flexible hourly duration with dynamic pricing calculation.
+### For Parking Operators
+- **Operator Command Center**: Real-time facility occupancy, today's verified revenue analytics, and live bay metrics.
+- **Facility & Bay Management**: Register new parking facilities and manage bay statuses (`AVAILABLE`, `MAINTENANCE`, `OCCUPIED`).
+- **Reservation Audit & Logs**: Dedicated reservation dashboard to monitor and search bookings across facilities.
+- **Barrier Gate Scanner Terminal**: Live optical camera scanner with animated barrier gate simulation and audio validation feedback.
 
-3. **Cashless Digital Payments**:
-   - Mock Razorpay / Stripe / UPI checkout with instant transaction confirmation.
-   - Automatic generation of unique digital parking passes with dynamic QR code tokens.
-
-4. **Digital Parking Pass & QR Codes**:
-   - Live countdown timer, assigned bay number, vehicle plate, and navigation link.
-   - Print / Save as PDF ticket receipt.
-
-5. **Hardware Integration Simulator (Barrier Gate & ANPR)**:
-   - Automated barrier gate kiosk with OCR License Plate Recognition (ANPR) and optical QR pass scanner.
-   - Graphical barrier arm opening/closing simulation with LED state indicators.
-   - Automatic entry/exit detection and overstay surcharge calculations recorded in `entry_exit_logs`.
-
-6. **Parking Operator Command Center**:
-   - Facility analytics: total revenue, today's income, occupancy rate %, barrier vehicle movements.
-   - Live slot bay override (toggle maintenance or available status with 1-click).
-   - Real-time active parkers list and duration tracking.
+### Security & Architecture
+- **Role-Based Access Control (RBAC)**: Strict role separation between `driver` and `operator`. Protected frontend routes and API endpoints returning `403 Forbidden` on unauthorized access.
+- **Facility Isolation**: Operators only access and manage their own facilities, bookings, and revenue data.
 
 ---
 
-## 🗄️ Database Architecture (ER Diagram Exact Match)
+## 🛠️ Tech Stack
 
-The system models all 9 entities from the official project ER diagram:
-
-- `OPERATOR`: Lot operators and facility managers.
-- `PARKING_LOT`: Registered facilities with GPS coordinates, total slots, and hourly rates.
-- `PARKING_SLOT`: Individual bays (`slot_number`, `slot_type`, `status`).
-- `USER`: Drivers and commuters.
-- `VEHICLE`: Registered user vehicles with license plates and model types.
-- `BOOKING`: Time-windowed reservations linked to slot, vehicle, user, and unique QR code.
-- `PAYMENT`: Cashless transactions with transaction IDs, gateways, and amounts.
-- `ENTRY_EXIT_LOG`: Barrier event log tracking entry/exit timestamps and verification method (`QR_CODE`, `ANPR`).
-- `NOTIFICATION`: User notifications for booking confirmation, gate entry, and exit.
+- **Backend**: FastAPI, SQLAlchemy, SQLite, Pydantic, Python-Jose (JWT), Uvicorn
+- **Frontend**: React 19, Vite, Tailwind CSS, React Router v7, Leaflet, Lucide Icons, html5-qrcode
+- **Testing**: Pytest, HTTPX
 
 ---
 
-## 🚀 Quick Start (One-Click)
+## 🚀 Getting Started
 
-```
-This will automatically:
-1. Seed the database with realistic sample facilities and slots.
-2. Launch the FastAPI backend on `http://127.0.0.1:8000`.
-3. Launch the React frontend on `http://localhost:5173`.
-4. Open the web application in your default browser.
+### Prerequisites
+- Python 3.10+
+- Node.js 18+ & npm
 
----
-
-## 🔑 Demo Credentials
-
-| Role | Email | Password |
-| :--- | :--- | :--- |
-| **Driver / Commuter** | `sarthak@example.com` | `user123` |
-| **Lot Operator** | `operator@parking.com` | `operator123` |
-
-*(You can also use the 1-click Demo Login buttons inside the app without typing credentials)*
-
----
-
-## 🛠️ Manual Launch Commands
-
-### Backend:
+### 1. Backend Setup
 ```bash
 cd backend
 python -m venv venv
+
+# Windows
 venv\Scripts\activate
+# Linux / macOS
+source venv/bin/activate
+
 pip install -r requirements.txt
-python -m app.seed
 uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
-API Documentation: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- API Base URL: `http://127.0.0.1:8000`
+- Swagger Documentation: `http://127.0.0.1:8000/docs`
 
-### Frontend:
+### 2. Frontend Setup
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Web App: [http://localhost:5173](http://localhost:5173)
+- Web Application: `http://localhost:5173`
+
+---
+
+## 🔑 Demo Credentials
+
+| Role | Email | Password | Access |
+| :--- | :--- | :--- | :--- |
+| **Driver** | `sarthak@example.com` | `user123` | Map & Lots, Search, My Bookings, Vehicles |
+| **Operator** | `operator@parking.com` | `operator123` | Dashboard, Lots, Bookings, Barrier Scanner |
+
+*(Use the "Fill Demo Credentials" button on the sign-in screen for one-click login).*
